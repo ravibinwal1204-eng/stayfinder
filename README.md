@@ -175,8 +175,78 @@ npm run preview
 
 ---
 
-If you want, I can next:
+## Final project structure
 
-- split `src/App.jsx` into modular components and add React Router,
-- switch uploads to multipart/form-data and integrate Cloudinary,
-- or build a dedicated property detail page instead of the old quick popup.
+Top-level layout (important files & folders):
+
+```
+stayfinder/
+├── server/                 # Express API and backend
+│   ├── index.js            # API entrypoint + DB bootstrap & in-memory fallback
+│   ├── config/db.js        # Mongoose connection
+│   ├── models/             # Mongoose models (User, Property, ContactMessage)
+│   ├── routes/             # Route handlers (auth, users, properties, wishlist, contact)
+│   ├── middleware/         # auth middleware (JWT protect)
+│   ├── utils/              # helpers (saveImage, formatProperty)
+│   ├── seed.js             # optional sample data (opt-in via SEED_DB)
+│   └── uploads/            # saved image files served statically
+├── src/                    # React frontend (Vite)
+│   ├── App.jsx             # Single-file demo app (pages, components inline)
+│   ├── services/api.js     # API wrapper + token helpers
+│   ├── main.jsx            # React entrypoint
+│   └── App.css             # Styles
+├── .env.example
+├── package.json
+└── vite.config.js
+```
+
+## Development & deployment workflow
+
+Local development:
+
+1. Install deps:
+
+```bash
+npm install
+```
+2. Copy environment and edit `.env` if needed:
+
+```bash
+copy .env.example .env
+# set MONGODB_URI, JWT_SECRET, CLIENT_URL etc.
+```
+3. Run app (both frontend + backend):
+
+```bash
+npm run dev
+```
+
+Notes:
+- If no `MONGODB_URI` is provided the server starts an ephemeral in-memory MongoDB (development convenience).
+- To seed demo data: `set SEED_DB=true && npm run dev` (Windows CMD) or set `$env:SEED_DB='true'` on PowerShell.
+
+Build & production preview:
+
+```bash
+npm run build
+npm run preview
+```
+
+GitHub / CI notes:
+- Keep `mongodb-memory-server` as a dev/test-only dependency used in CI for integration tests.
+- For production, configure `MONGODB_URI` to a managed MongoDB (Atlas) and disable in-memory fallback.
+
+## How StayFinder differs from similar demo projects
+
+- Dev-first ergonomics: in-memory MongoDB fallback and opt-in seed data make contributor setup trivial and reproducible.
+- Simple image strategy for sample apps: client converts chosen/captured images to Base64 data URLs, server `saveImage` utility decodes and stores files under `server/uploads/`. This keeps the demo self-contained (no external cloud services required).
+- Focus on owner-tenant direct connection: UI and backend link `Property.owner` to `User` and show owner contact after login — encourages direct listings without brokers.
+- Lightweight single-file React app: `src/App.jsx` keeps the demo compact and easy to inspect; intended for interviews and quick walkthroughs rather than production-scale structure.
+
+## Next recommended improvements (optional)
+
+- Split `src/App.jsx` into components and add React Router for separate pages (improves maintainability).
+- Replace base64-in-JSON uploads with multipart/form-data and integrate direct-to-cloud uploads (S3/Cloudinary) for production.
+- Add pagination, indexing, and server-side filtering for large datasets.
+
+If you'd like, I can implement any of the recommended improvements—tell me which one to start with and I'll implement it.
