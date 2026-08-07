@@ -17,6 +17,7 @@ export function formatProperty(doc) {
     bhk: p.bhk,
     furnishing: p.furnishing,
     images: p.images?.length ? p.images : [],
+    videos: p.videos?.length ? p.videos : [],
     owner: p.ownerName || "Owner",
     ownerPhone: p.ownerPhone || "",
     amenities: p.amenities || [],

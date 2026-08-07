@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api, setToken } from "./services/api.js";
 
 const FONTS_URL = "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@400;500;600;700&display=swap";
+const MEDIA_BASE = import.meta.env.VITE_API_URL || (window.location.port === "4173" ? "http://localhost:5000" : "");
+const mediaUrl = (url) => url?.startsWith("/uploads/") ? `${MEDIA_BASE}${url}` : url;
 
 /* ═══════════════════ DATA ═══════════════════ */
 const CITIES = ["Mumbai","Delhi","Bangalore","Pune","Hyderabad","Chennai","Kolkata","Ahmedabad","Jaipur","Goa"];
@@ -44,11 +46,38 @@ const CITY_IMAGES = {
   Goa:"https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&q=80",
 };
 
-function generateProperties(count=24){
+function buildProfileFormData(profile) {
+  const formData = new FormData();
+  Object.entries(profile).forEach(([key, value]) => {
+    if (key === "photo" || key === "photoFile") return;
+    if (value === undefined || value === null) return;
+    formData.append(key, value);
+  });
+  if (profile.photoFile) formData.append("photo", profile.photoFile);
+  else if (profile.photo === null) formData.append("photo", "");
+  return formData;
+}
+
+function buildPropertyFormData(form, files) {
+  const formData = new FormData();
+  Object.entries(form).forEach(([key, value]) => {
+    if (key === "videoFiles" || value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => formData.append(key, item));
+      return;
+    }
+    formData.append(key, value);
+  });
+  files.forEach((file) => formData.append("images", file));
+  (form.videoFiles || []).forEach((file) => formData.append("videos", file));
+  return formData;
+}
+
+function generateProperties(){
   // Disabled client-side fake properties — server should provide real listings.
   return [];
 }
-const ALL_PROPERTIES = generateProperties(24); // intentionally empty; server-backed properties are used instead
+const ALL_PROPERTIES = generateProperties(); // intentionally empty; server-backed properties are used instead
 
 /* ═══════════════════ SVG ICONS ═══════════════════ */
 const I={
@@ -175,7 +204,7 @@ body,html{font-family:var(--f);color:var(--t);background:var(--bg);-webkit-font-
 .modal{background:#fff;border-radius:var(--rxl);max-width:960px;width:100%;max-height:92vh;overflow-y:auto;animation:scaleIn .3s ease-out;scrollbar-width:thin}
 .mo-cl{position:sticky;top:16px;left:16px;z-index:10;width:36px;height:36px;border-radius:50%;background:#fff;border:1px solid var(--bdr);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh);margin:16px 0 -52px 16px;transition:all var(--tr)}.mo-cl:hover{background:var(--bgs);transform:scale(1.05)}
 .mo-gal{display:grid;grid-template-columns:1fr 1fr;gap:6px;border-radius:var(--rxl) var(--rxl) 0 0;overflow:hidden;height:380px}
-.mo-gal img{width:100%;height:100%;object-fit:cover;transition:all .4s ease;cursor:pointer}.mo-gal img:hover{filter:brightness(.93)}.mo-gal img:first-child{grid-row:1/3}
+.mo-gal>img,.mo-gal>video{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:cover}.mo-gal>img{cursor:pointer;transition:filter .4s ease}.mo-gal>img:hover{filter:brightness(.93)}.mo-gal>img:first-child{grid-row:1/3}.mo-gal>video{background:#111}
 .mo-body{padding:32px 36px}.mo-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
 .modal h2{font-family:var(--fd);font-size:28px;font-weight:600}
 .mo-meta{display:flex;gap:16px;margin-top:6px;flex-wrap:wrap}.mo-meta span{font-size:14px;color:var(--ts);display:flex;align-items:center;gap:4px}
@@ -321,7 +350,7 @@ function PropertyCard({property:p,onOpen,onLike,liked}){
   const[idx,setIdx]=useState(0);const imgs=p.images;
   return(<div className="card" onClick={()=>onOpen(p)}>
     <div className="card-car">
-      {imgs.map((s,i)=><img key={i} className={`card-img ${i!==idx?"hide":""}`} src={s} alt="" loading="lazy"/>)}
+      {imgs.map((s,i)=><img key={i} className={`card-img ${i!==idx?"hide":""}`} src={mediaUrl(s)} alt="" loading="lazy"/>)}
       {p.postedDaysAgo<=3&&<div className="card-badge">New</div>}
       <button className={`card-wl ${liked?"liked":""}`} onClick={e=>{e.stopPropagation();onLike(p.id)}}>{I.heart(liked)}</button>
       <button className="card-nv pv" onClick={e=>{e.stopPropagation();setIdx(i=>(i-1+imgs.length)%imgs.length)}}>{I.chevL}</button>
@@ -343,7 +372,7 @@ function FeaturedSlider({properties,onOpen}){
   return(<div className="feat-sl">
     <div className="feat-tk" style={{transform:`translateX(-${idx*100}%)`}}>
         {feat.map(p=>(<div className="feat-s" key={p.id}>
-        <img src={p.images[0]} alt={p.title}/>
+        <img src={mediaUrl(p.images[0])} alt={p.title}/>
         <div className="feat-ov"><div className="feat-ct"><h3>{p.title}</h3><p>{p.furnishing} · {p.area} sq.ft · ₹{p.price.toLocaleString()}/mo</p><button className="btn btn-p" onClick={()=>onOpen(p)}>View Details</button></div></div>
       </div>))}
     </div>
@@ -358,7 +387,7 @@ function PropertyModal({property:p,onClose,user,onShowAuth}){
   const handleContact=()=>{if(!user){onShowAuth();return}alert(`Contact request sent to ${p.owner}!`)};
   return(<div className="mo" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
     <button className="mo-cl" onClick={onClose}>{I.close}</button>
-    <div className="mo-gal">{p.images.slice(0,3).map((img,i)=><img key={i} src={img} alt=""/>)}</div>
+    <div className="mo-gal">{p.images.slice(0,3).map((img,i)=><img key={i} src={mediaUrl(img)} alt=""/>)}{(p.videos||[]).map((video,i)=><video key={`video-${i}`} src={mediaUrl(video)} controls playsInline preload="metadata"/> )}</div>
     <div className="mo-body">
       <div className="mo-hdr"><div><h2>{p.title}</h2><div className="mo-meta"><span>{I.star} {p.rating} ({p.reviews} reviews)</span><span>📍 {p.location}</span></div></div></div>
       <div className="mo-div"/><div className="mo-sec"><h3>About this property</h3><p>{p.description}</p></div>
@@ -419,9 +448,9 @@ function AuthModal({onClose,onAuth}){
 /* ═══════════ PROFILE PAGE ═══════════ */
 function ProfilePage({user,profile,setProfile,showToast}){
   const galRef=useRef(null);const vidRef=useRef(null);const[streaming,setStreaming]=useState(false);
-  const handleGallery=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>setProfile(p=>({...p,photo:ev.target.result}));r.readAsDataURL(f)};
+  const handleGallery=e=>{const f=e.target.files?.[0];if(!f)return;const previewUrl=URL.createObjectURL(f);setProfile(p=>({...p,photo:previewUrl,photoFile:f}))};
   const startCamera=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});if(vidRef.current){vidRef.current.srcObject=s;vidRef.current.play();setStreaming(true)}}catch(err){console.warn('Camera start failed',err);showToast("Camera access denied — allow camera permission in your browser (disable shields if using Brave)")}};
-  const capturePhoto=()=>{if(!vidRef.current)return;const c=document.createElement("canvas");c.width=vidRef.current.videoWidth;c.height=vidRef.current.videoHeight;c.getContext("2d").drawImage(vidRef.current,0,0);setProfile(p=>({...p,photo:c.toDataURL("image/jpeg",.85)}));stopCamera()};
+  const capturePhoto=()=>{if(!vidRef.current)return;const c=document.createElement("canvas");c.width=vidRef.current.videoWidth;c.height=vidRef.current.videoHeight;c.getContext("2d").drawImage(vidRef.current,0,0);c.toBlob(blob=>{if(!blob)return;const file=new File([blob],"captured-photo.jpg",{type:"image/jpeg"});setProfile(p=>({...p,photo:URL.createObjectURL(file),photoFile:file}))},"image/jpeg",.85);stopCamera()};
   const stopCamera=()=>{if(vidRef.current?.srcObject){vidRef.current.srcObject.getTracks().forEach(t=>t.stop());vidRef.current.srcObject=null}setStreaming(false)};
   return(<div className="prof">
     <div className="prof-head">
@@ -440,7 +469,7 @@ function ProfilePage({user,profile,setProfile,showToast}){
               <>
                 <button className="prof-photo-act" onClick={startCamera}>{I.camera} Camera</button>
                 <button className="prof-photo-act" onClick={()=>galRef.current?.click()}>{I.gallery} Gallery</button>
-                {profile.photo&&<button className="prof-photo-act prof-photo-act-del" onClick={async()=>{try{await api.saveProfile({...profile,photo:null});setProfile(p=>({...p,photo:null}));showToast('Profile photo deleted')}catch(e){showToast('Failed to delete photo')}}}>Delete</button>}
+                {profile.photo&&<button className="prof-photo-act prof-photo-act-del" onClick={async()=>{try{await api.saveProfile(buildProfileFormData({...profile,photo:null,photoFile:null}));setProfile(p=>({...p,photo:null,photoFile:null}));showToast('Profile photo deleted')}catch{showToast('Failed to delete photo')}}}>Delete</button>}
               </>
             }
           </div>
@@ -471,22 +500,26 @@ function ProfilePage({user,profile,setProfile,showToast}){
         </div>
         <div className="fg pf-full"><label>Bio</label><textarea className="fg-in" rows={3} value={profile.bio} onChange={e=>setProfile(p=>({...p,bio:e.target.value}))} placeholder="Tell us about yourself..." style={{resize:"vertical",minHeight:80}}/></div>
       </div>
-      <div className="pf-save-row"><button className="btn btn-p btn-lg" onClick={async()=>{try{await api.saveProfile(profile);showToast("Profile saved successfully!")}catch(e){showToast("Failed to save profile")}}}>Save Profile</button></div>
+      <div className="pf-save-row"><button className="btn btn-p btn-lg" onClick={async()=>{try{await api.saveProfile(buildProfileFormData(profile));showToast("Profile saved successfully!")}catch{showToast("Failed to save profile")}}}>Save Profile</button></div>
     </div>
   </div>);
 }
 
 /* ═══════════ OWNER DASHBOARD ═══════════ */
-function OwnerDashboard({user,profile,showToast,myProperties,setMyProperties}){
+function OwnerDashboard({showToast,myProperties,setMyProperties}){
   const[showForm,setShowForm]=useState(false);
-  const[form,setForm]=useState({title:"",description:"",location:"",city:"",price:"",deposit:"",area:"",type:"Apartment",bhk:"2 BHK",furnishing:"Semi Furnished",minLease:"12",contact:"",amenities:[],images:[]});
-  const imgRef=useRef(null);const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const addImage=e=>{Array.from(e.target.files||[]).forEach(file=>{const r=new FileReader();r.onload=ev=>setForm(f=>({...f,images:[...f.images,ev.target.result]}));r.readAsDataURL(file)})};
+  const[form,setForm]=useState({title:"",description:"",location:"",city:"",price:"",deposit:"",area:"",type:"Apartment",bhk:"2 BHK",furnishing:"Semi Furnished",minLease:"12",contact:"",amenities:[],images:[],videoFiles:[]});
+  const[imageFiles,setImageFiles]=useState([]);const[videoFiles,setVideoFiles]=useState([]);
+  const imgRef=useRef(null);const videoRef=useRef(null);const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const addImage=e=>{Array.from(e.target.files||[]).forEach(file=>{const previewUrl=URL.createObjectURL(file);setForm(f=>({...f,images:[...f.images,previewUrl]}));setImageFiles(files=>[...files,file])});if(imgRef.current) imgRef.current.value=""};
+  const removeImage=index=>{setForm(f=>({...f,images:f.images.filter((_,j)=>j!==index)}));setImageFiles(files=>files.filter((_,j)=>j!==index))};
+  const addVideo=e=>{const files=Array.from(e.target.files||[]);if(files.length>2||videoFiles.length+files.length>2){showToast("You can upload up to 2 videos");return}setForm(f=>({...f,videoFiles:[...(f.videoFiles||[]),...files]}));setVideoFiles(current=>[...current,...files]);if(videoRef.current)videoRef.current.value=""};
+  const removeVideo=index=>{setForm(f=>({...f,videoFiles:f.videoFiles.filter((_,j)=>j!==index)}));setVideoFiles(files=>files.filter((_,j)=>j!==index))};
   const toggleAmenity=a=>setForm(f=>({...f,amenities:f.amenities.includes(a)?f.amenities.filter(x=>x!==a):[...f.amenities,a]}));
   const submit=async()=>{
     if(!form.title||!form.city||!form.price){showToast("Fill title, city & price");return}
     try{
-      const body={
+      const payload = buildPropertyFormData({
         title:form.title,
         description:form.description||"No description",
         city:form.city,
@@ -500,12 +533,14 @@ function OwnerDashboard({user,profile,showToast,myProperties,setMyProperties}){
         minLease: Number(form.minLease) || 12,
         contact: form.contact,
         amenities: form.amenities || [],
-        images: form.images || [],
-      };
-      const res = await api.createProperty(body);
+        videoFiles: form.videoFiles || [],
+      }, imageFiles);
+      const res = await api.createProperty(payload);
       if(res?.success && res.property){
         setMyProperties(p=>[res.property,...p]);
-        setForm({title:"",description:"",location:"",city:"",price:"",deposit:"",area:"",type:"Apartment",bhk:"2 BHK",furnishing:"Semi Furnished",minLease:"12",contact:"",amenities:[],images:[]});
+        setForm({title:"",description:"",location:"",city:"",price:"",deposit:"",area:"",type:"Apartment",bhk:"2 BHK",furnishing:"Semi Furnished",minLease:"12",contact:"",amenities:[],images:[],videoFiles:[]});
+        setImageFiles([]);
+        setVideoFiles([]);
         setShowForm(false);
         showToast("Property listed!");
       } else {
@@ -539,11 +574,12 @@ function OwnerDashboard({user,profile,showToast,myProperties,setMyProperties}){
         <div className="fg ap-full"><label>Your Contact Number</label><input className="fg-in" type="tel" value={form.contact} onChange={e=>set("contact",e.target.value)} placeholder="+91 98765 43210 (tenants will see this)"/></div>
         <div className="fg ap-full"><label>Description</label><textarea className="fg-in" rows={3} value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Describe your property..." style={{resize:"vertical",minHeight:80}}/></div>
         <div className="fg ap-full"><label>Amenities</label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{AMENITIES_LIST.map(a=><button key={a} className={`btn btn-sm ${form.amenities.includes(a)?"btn-d":"btn-o"}`} onClick={()=>toggleAmenity(a)}>{a}</button>)}</div></div>
-        <div className="fg ap-full"><label>Photos</label><div className="ap-imgs">{form.images.map((img,i)=><div className="ap-img-box" key={i}><img src={img} alt=""/><button className="ap-rm" onClick={()=>setForm(f=>({...f,images:f.images.filter((_,j)=>j!==i)}))}>&times;</button></div>)}<div className="ap-img-box" onClick={()=>imgRef.current?.click()}>{I.plus}</div></div><input ref={imgRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={addImage}/></div>
+        <div className="fg ap-full"><label>Photos</label><div className="ap-imgs">{form.images.map((img,i)=><div className="ap-img-box" key={i}><img src={img} alt=""/><button className="ap-rm" onClick={()=>removeImage(i)}>&times;</button></div>)}<div className="ap-img-box" onClick={()=>imgRef.current?.click()}>{I.plus}</div></div><input ref={imgRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={addImage}/></div>
+        <div className="fg ap-full"><label>Property Video</label><div className="ap-imgs">{form.videoFiles.map((video,i)=><div className="ap-img-box" key={i}><video src={URL.createObjectURL(video)} muted/><button className="ap-rm" onClick={()=>removeVideo(i)}>&times;</button></div>)}<div className="ap-img-box" onClick={()=>videoRef.current?.click()}>{I.plus}</div></div><input ref={videoRef} type="file" accept="video/*" multiple style={{display:"none"}} onChange={addVideo}/><div style={{fontSize:12,color:"var(--ts)",marginTop:6}}>Upload up to 2 videos, 100 MB each.</div></div>
       </div>
       <div className="pf-save-row"><button className="btn btn-o" onClick={()=>setShowForm(false)}>Cancel</button><button className="btn btn-p btn-lg" onClick={submit}>List Property</button></div>
     </div>}
-    {myProperties.length>0?<div style={{overflowX:"auto"}}><table className="pl-table"><thead><tr><th>Photo</th><th>Title</th><th>City</th><th>Rent</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead><tbody>{myProperties.map(p=><tr key={p.id}><td><img className="pl-thumb" src={p.images[0]} alt=""/></td><td style={{fontWeight:600}}>{p.title}</td><td>{p.city}</td><td>₹{p.price.toLocaleString()}/mo</td><td>{p.type}</td><td><span className="pl-status active">Active</span></td><td><div className="pl-actions"><button className="pl-act" title="View">{I.eye}</button><button className="pl-act del" title="Delete" onClick={()=>{setMyProperties(pp=>pp.filter(x=>x.id!==p.id));showToast("Removed")}}>{I.trash}</button></div></td></tr>)}</tbody></table></div>
+    {myProperties.length>0?<div style={{overflowX:"auto"}}><table className="pl-table"><thead><tr><th>Photo</th><th>Title</th><th>City</th><th>Rent</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead><tbody>{myProperties.map(p=><tr key={p.id}><td><img className="pl-thumb" src={mediaUrl(p.images[0])} alt=""/></td><td style={{fontWeight:600}}>{p.title}</td><td>{p.city}</td><td>₹{p.price.toLocaleString()}/mo</td><td>{p.type}</td><td><span className="pl-status active">Active</span></td><td><div className="pl-actions"><button className="pl-act" title="View">{I.eye}</button><button className="pl-act del" title="Delete" onClick={()=>{setMyProperties(pp=>pp.filter(x=>x.id!==p.id));showToast("Removed")}}>{I.trash}</button></div></td></tr>)}</tbody></table></div>
     :!showForm&&<div style={{textAlign:"center",padding:"60px 0",color:"var(--ts)"}}><div style={{fontSize:48,marginBottom:16}}>🏠</div><div style={{fontSize:18,fontWeight:600,marginBottom:8}}>No properties listed yet</div><div style={{marginBottom:20}}>Start by adding your first property</div><button className="btn btn-p" onClick={()=>setShowForm(true)}>{I.plus} Add Property</button></div>}
   </div>);
 }
@@ -598,7 +634,7 @@ export default function StayFinder(){
   const BUDGETS=[{label:"Under ₹10K",max:10000},{label:"₹10K–20K",min:10000,max:20000},{label:"₹20K–35K",min:20000,max:35000},{label:"₹35K–50K",min:35000,max:50000},{label:"₹50K+",min:50000}];
   const[toast,setToast]=useState(null);const[scrolled,setScrolled]=useState(false);
   const[page,setPage]=useState("home");const[showDropdown,setShowDropdown]=useState(false);
-  const[profile,setProfile]=useState({name:"",phone:"",dob:"",gender:"",address:"",city:"",occupation:"",bio:"",role:"",photo:null});
+  const[profile,setProfile]=useState({name:"",phone:"",dob:"",gender:"",address:"",city:"",occupation:"",bio:"",role:"",photo:null,photoFile:null});
   const[myProperties,setMyProperties]=useState([]);const ddRef=useRef(null);
   const[serverProperties,setServerProperties]=useState([]);
 
@@ -618,7 +654,7 @@ export default function StayFinder(){
   const handleLogout=()=>{setUser(null);setShowDropdown(false);setPage("home");showToast("Logged out")};
   const goTo=pg=>{setPage(pg);setShowDropdown(false);window.scrollTo({top:0,behavior:"smooth"})};
 
-  const allProperties=[...myProperties,...serverProperties];
+  const allProperties=serverProperties;
   let filtered=allProperties;
   // Hero search bar filters
   if(searchCity)filtered=filtered.filter(p=>p.city.toLowerCase().includes(searchCity.toLowerCase())||p.location.toLowerCase().includes(searchCity.toLowerCase()));
@@ -682,7 +718,6 @@ export default function StayFinder(){
           <div className="hero-badge">🏡 No Brokers · Direct Owner Connect</div>
           <h1>Find Your Perfect Long-Term Home</h1>
           <p className="hero-sub">Rent flats & houses for months or years — directly from owners. Zero brokerage.</p>
-          <div className="sbar"><input placeholder="Search city, locality..." value={searchCity} onChange={e=>setSearchCity(e.target.value)}/><div className="sbar-div"/><select value={searchType} onChange={e=>setSearchType(e.target.value)}><option value="">All Types</option>{PROPERTY_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select><button className="sbar-btn">{I.search}</button></div>
         </div>
       </section>
       <div className="mq-wrap"><div className="mq">{[...Array(2)].flatMap((_,r)=>[<div className="mq-i" key={`a${r}`}><strong>10,000+</strong> Properties</div>,<div className="mq-i" key={`b${r}`}><strong>Zero</strong> Brokerage</div>,<div className="mq-i" key={`c${r}`}><strong>50+</strong> Cities</div>,<div className="mq-i" key={`d${r}`}><strong>Direct</strong> Owner Contact</div>,<div className="mq-i" key={`e${r}`}><strong>Verified</strong> Listings</div>,<div className="mq-i" key={`f${r}`}><strong>24/7</strong> Support</div>])}</div></div>

@@ -14,6 +14,7 @@ const propertySchema = new mongoose.Schema(
     furnishing: { type: String, default: "Semi Furnished" },
     minLease: { type: Number, default: 12 },
     images: [{ type: String }],
+    videos: [{ type: String }],
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     ownerName: { type: String, required: true },
     ownerPhone: { type: String, default: "" },

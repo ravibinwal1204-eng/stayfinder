@@ -1,4 +1,5 @@
 const TOKEN_KEY = "stayfinder_token";
+const API_BASE = import.meta.env.VITE_API_URL || (window.location.port === "4173" ? "http://localhost:5000" : "");
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -10,11 +11,21 @@ export function setToken(token) {
 }
 
 async function request(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...options.headers };
+  const headers = { ...(options.headers || {}) };
   const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token) headers.Authorization = headers.Authorization || `Bearer ${token}`;
 
-  const res = await fetch(path, { ...options, headers });
+  const isFormData = options.body instanceof FormData;
+  if (!isFormData && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (error) {
+    throw new Error(`Unable to reach the StayFinder API. Start the backend or set VITE_API_URL. (${error.message})`);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.message || "Request failed");
@@ -50,7 +61,7 @@ export const api = {
   getProperty: (id) => request(`/api/properties/${id}`),
 
   createProperty: (body) =>
-    request("/api/properties", { method: "POST", body: JSON.stringify(body) }),
+    request("/api/properties", { method: "POST", body: body instanceof FormData ? body : JSON.stringify(body) }),
 
   deleteProperty: (id) =>
     request(`/api/properties/${id}`, { method: "DELETE" }),
@@ -61,7 +72,7 @@ export const api = {
   getProfile: () => request("/api/users/profile"),
 
   saveProfile: (profile) =>
-    request("/api/users/profile", { method: "PUT", body: JSON.stringify(profile) }),
+    request("/api/users/profile", { method: "PUT", body: profile instanceof FormData ? profile : JSON.stringify(profile) }),
 
   getWishlist: () => request("/api/wishlist"),
 

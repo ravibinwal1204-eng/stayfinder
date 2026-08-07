@@ -1,10 +1,21 @@
 import { Router } from "express";
+import multer from "multer";
 import Property from "../models/Property.js";
 import { protect } from "../middleware/auth.js";
 import { formatProperty } from "../utils/formatProperty.js";
-import { resolveImageList } from "../utils/saveImage.js";
+import { resolveImageList, resolveVideoList } from "../utils/saveImage.js";
 
 const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024, files: 12 },
+  fileFilter: (_req, file, cb) => {
+    const valid = file.fieldname === "images"
+      ? file.mimetype.startsWith("image/")
+      : file.fieldname === "videos" && file.mimetype.startsWith("video/");
+    cb(valid ? null : new Error("Only image files may be uploaded as images and video files as videos"), valid);
+  },
+});
 
 function buildFilter(query) {
   const filter = { available: true };
@@ -61,17 +72,44 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/", protect, async (req, res) => {
+router.post("/", protect, upload.fields([
+  { name: "images", maxCount: 10 },
+  { name: "videos", maxCount: 2 },
+]), async (req, res) => {
   try {
-    const body = req.body;
+    const body = req.body || {};
     if (!body.title || !body.city || !body.price) {
       return res.status(400).json({ success: false, message: "Fill title, city & price" });
     }
-    const images = await resolveImageList(body.images);
+
+    const uploadedFiles = req.files || {};
+    const imageFiles = Array.isArray(uploadedFiles.images) ? uploadedFiles.images : [];
+    const videoFiles = Array.isArray(uploadedFiles.videos) ? uploadedFiles.videos : [];
+    const legacyImages = Array.isArray(body.images) ? body.images : body.images ? [body.images] : [];
+    const imageInputs = [
+      ...imageFiles.map((file) => ({
+        buffer: file.buffer,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+      })),
+      ...legacyImages,
+    ];
+    const images = await resolveImageList(imageInputs);
+    const videos = await resolveVideoList(videoFiles.map((file) => ({
+      buffer: file.buffer,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+    })));
     const defaults = [
       "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80",
     ];
     const ownerName = req.user.profile?.name || req.user.name;
+    const amenities = Array.isArray(body.amenities)
+      ? body.amenities
+      : body.amenities
+        ? [body.amenities]
+        : [];
+
     const property = await Property.create({
       title: body.title,
       description: body.description || "No description",
@@ -85,10 +123,11 @@ router.post("/", protect, async (req, res) => {
       furnishing: body.furnishing || "Semi Furnished",
       minLease: Number(body.minLease) || 12,
       images: images.length ? images : defaults,
+      videos,
       owner: req.user._id,
       ownerName,
       ownerPhone: body.contact || req.user.profile?.phone || "",
-      amenities: body.amenities || [],
+      amenities,
     });
     res.status(201).json({ success: true, property: formatProperty(property) });
   } catch (err) {
